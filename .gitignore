@@ -2,7 +2,6 @@ venv/
 .venv/
 __pycache__/
 *.py[cod]
-data/*.csv
 data/*.npz
 logs/
 *.log

@@ -138,3 +138,20 @@ Después de cada prueba, el siguiente mensaje normal tiene que ser aceptado: la 
 - El canal protege los parámetros **en tránsito**. El master los ve en claro, porque los necesita para agregar. Esta capa no protege contra un master malicioso que intente inferir datos a partir de W_k; para eso está la perturbación de parámetros de la phase 1.
 - No hay post-compromise security: quien obtenga `CK_n` puede derivar las claves siguientes hasta el próximo handshake.
 - El master calcula DH y firma antes de comprobar que el worker tiene su clave privada (solo verifica que el ID esté autorizado). No hay rate limiting.
+
+## Distribución de datos IID / non-IID
+
+El master reparte a cada worker **solo los índices** de las filas que le tocan (los datos no viajan). La lógica viene de `CHANGE_REPO/fedlab-iid-noniid`: IID = permutación + `array_split`; non-IID = Dirichlet por clase (`alpha` bajo = más sesgo).
+
+| Archivo | Contenido |
+|---|---|
+| `common/particion.py` | Algoritmos de partición, tabla de consola y gráfico |
+| `master_edge/distribuidor.py` | `distribuir(srv, "iid"\|"noniid", labels)`: envía la partición en trozos por el canal seguro |
+| `worker_node/receptor.py` | `recibir_particion(cli)`: reensambla, verifica el histograma y confirma con `partition_ack` |
+| `scripts/demo_particiones.py` | Demo en un solo equipo con claves temporales |
+
+Validación (tabla + `results/particiones_iid_vs_noniid.png`), desde `phase2_hardware_semifl/`:
+
+    python -m scripts.demo_particiones --workers 4 --alpha 0.05
+
+Con workers reales: `python -m master_edge.distribuidor --scheme noniid --workers N` en el master y `python -m worker_node.receptor --id WORKER_1 --master IP` en cada worker.

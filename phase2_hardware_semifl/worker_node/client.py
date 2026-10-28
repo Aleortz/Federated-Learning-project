@@ -36,10 +36,14 @@ from common import protocol as P
 
 class WorkerClient:
     def __init__(self, worker_id, master_host=config.MASTER_HOST, port=config.PORT,
-                 master_id=config.MASTER_ID, keydir=config.KEYDIR, verbose=False, on_message=None):
+                 master_id=config.MASTER_ID, keydir=config.KEYDIR, verbose=False, on_message=None,
+                 reconnect_s=config.RECONNECT_S, on_connect=None):
         """
         on_message(msg)   se llama con cada mensaje autentico del master. Si es None,
                           los mensajes se encolan y se leen con recv().
+        reconnect_s       segundos entre reintentos de conexion.
+        on_connect()      se llama (en el hilo de conexion) cada vez que se establece
+                          una sesion, incluida cada reconexion.
         """
         self.id = worker_id
         self.priv, autorizados = P.cargar_identidad(keydir, worker_id)
@@ -51,6 +55,9 @@ class WorkerClient:
         self.master_pub = autorizados[master_id]
         self.verbose = verbose
         self.on_message = on_message
+        self.on_connect = on_connect
+        self.reconnect_s = reconnect_s
+        self._offline_hasta = 0.0           # simulacion de desconexion (ver desconectar())
         self.inbox = queue.Queue()
         self.ses = None
         self._conectado = threading.Event()
@@ -65,6 +72,15 @@ class WorkerClient:
 
     def stop(self):
         self._run = False
+        if self.ses:
+            self.ses.cerrar()
+
+    def desconectar(self, segundos):
+        """
+        SOLO PARA PRUEBAS: cierra la sesion y no reintenta durante `segundos`. Simula la
+        perdida de red en tests automaticos; en la demo real se desactiva la tarjeta de red a mano.
+        """
+        self._offline_hasta = time.time() + segundos
         if self.ses:
             self.ses.cerrar()
 
@@ -110,17 +126,22 @@ class WorkerClient:
         while self._run:
             if not self.connected:
                 self._conectado.clear()
+                if time.time() < self._offline_hasta:
+                    time.sleep(0.2)
+                    continue
                 ses = self._conectar()
                 if ses:
                     self.ses = ses
                     avisado = False
                     self._conectado.set()
                     threading.Thread(target=self._rx, args=(ses,), daemon=True).start()
+                    if self.on_connect:
+                        self.on_connect()
                 elif ses is None and not avisado:
                     print(f"[..] Master {self.master[0]}:{self.master[1]} no disponible; "
-                          f"reintento cada {config.RECONNECT_S} s.")
+                          f"reintento cada {self.reconnect_s} s.")
                     avisado = True
-            time.sleep(config.RECONNECT_S)
+            time.sleep(self.reconnect_s)
 
     def _rx(self, ses):
         try:

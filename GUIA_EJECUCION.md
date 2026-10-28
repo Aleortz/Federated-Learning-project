@@ -107,4 +107,4 @@ Levanta un master y 4 workers locales con claves temporales, reparte IID y non-I
 ## Notas
 
 - La partición `i` va al `i`-ésimo worker en **orden alfabético de ID**. Con los mismos IDs, semilla y N, cada worker recibe lo mismo.
-- Esta guía cubre solo el reparto de datos. El entrenamiento y la agregación (`logistic_model.py`, `aggregator.py`) aún no están implementados.
+- Esta guía cubre solo el reparto de datos. El entrenamiento federado, FedAvg, IID/non-IID, desconexiones y resultados están en `phase2_hardware_semifl/README.md`.

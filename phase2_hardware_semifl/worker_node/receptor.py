@@ -23,32 +23,54 @@ import numpy as np
 from common import config, particion
 
 
+class EnsambladorParticion:
+    """
+    Reensambla la particion a partir de los mensajes `partition` + `partition_chunk`, uno a
+    uno (sirve tanto para recibir_particion() como para un bucle de mensajes mas general).
+    agregar(msg) devuelve None mientras falten trozos y el dict de la particion al completarse.
+    """
+
+    def __init__(self, labels=None):
+        self.labels = labels
+        self.cabecera, self.trozos = None, {}
+
+    def agregar(self, msg):
+        tipo = msg.get("type")
+        if tipo == "partition":
+            self.cabecera, self.trozos = msg, {}
+        elif tipo == "partition_chunk" and self.cabecera is not None:
+            self.trozos[msg["i"]] = msg["indices"]
+        else:
+            return None
+        c = self.cabecera
+        if c is None or len(self.trozos) != c["chunks"]:
+            return None
+        indices = [x for i in range(c["chunks"]) for x in self.trozos[i]]
+        self.cabecera, self.trozos = None, {}
+        if len(indices) != c["n"]:
+            raise ValueError(f"particion corrupta: {len(indices)} indices de {c['n']}")
+        hist = c["hist"]
+        if self.labels is not None:
+            arr = np.asarray(indices, dtype=np.int64)
+            if len(arr) and (arr.min() < 0 or arr.max() >= len(self.labels)):
+                raise ValueError("particion con indices fuera del dataset local")
+            hist = np.bincount(np.asarray(self.labels)[arr], minlength=len(c["class_names"])).tolist()
+        return {**{k: c[k] for k in ("scheme", "alpha", "seed", "client", "class_names")},
+                "indices": indices, "n": len(indices), "hist": hist}
+
+
 def recibir_particion(cli, timeout=60, labels=None):
     """Bloquea hasta recibir la particion completa; devuelve un dict o None si vence el timeout."""
     fin = time.time() + timeout
-    cabecera, trozos = None, {}
+    ens = EnsambladorParticion(labels)
     while time.time() < fin:
         msg = cli.recv(timeout=max(0.1, fin - time.time()))
         if msg is None:
             break
-        tipo = msg.get("type")
-        if tipo == "partition":
-            cabecera, trozos = msg, {}
-        elif tipo == "partition_chunk" and cabecera is not None:
-            trozos[msg["i"]] = msg["indices"]
-        else:
-            continue            # otro tipo de mensaje: no es de este modulo
-        if cabecera is not None and len(trozos) == cabecera["chunks"]:
-            indices = [x for i in range(cabecera["chunks"]) for x in trozos[i]]
-            if len(indices) != cabecera["n"]:
-                raise ValueError(f"particion corrupta: {len(indices)} indices de {cabecera['n']}")
-            hist = cabecera["hist"]
-            if labels is not None:
-                hist = np.bincount(np.asarray(labels)[indices],
-                                   minlength=len(cabecera["class_names"])).tolist()
-            cli.send({"type": "partition_ack", "n": len(indices), "hist": hist})
-            return {**{k: cabecera[k] for k in ("scheme", "alpha", "seed", "client", "class_names")},
-                    "indices": indices, "n": len(indices), "hist": hist}
+        p = ens.agregar(msg)
+        if p is not None:
+            cli.send({"type": "partition_ack", "n": p["n"], "hist": p["hist"]})
+            return p
     return None
 
 

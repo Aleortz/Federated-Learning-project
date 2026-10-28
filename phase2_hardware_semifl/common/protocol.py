@@ -276,6 +276,23 @@ def handshake_respondedor(sock, my_id, priv, autorizados, addr="?", verbose=Fals
 # =====================================================================
 #  Sesion establecida: envio / recepcion
 # =====================================================================
+def _keepalive_rapido(sock):
+    """Acorta la deteccion de un par caido (ver config.KEEPALIVE_*). Mejor esfuerzo por SO."""
+    try:
+        if hasattr(socket, "SIO_KEEPALIVE_VALS"):          # Windows
+            sock.ioctl(socket.SIO_KEEPALIVE_VALS,
+                       (1, config.KEEPALIVE_IDLE_S * 1000, config.KEEPALIVE_INTVL_S * 1000))
+        else:
+            if hasattr(socket, "TCP_KEEPIDLE"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, config.KEEPALIVE_IDLE_S)
+            if hasattr(socket, "TCP_KEEPINTVL"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, config.KEEPALIVE_INTVL_S)
+            if hasattr(socket, "TCP_KEEPCNT"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, config.KEEPALIVE_CNT)
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
 class Sesion:
     def __init__(self, sock, my_id, peer_id, k_tx, k_rx, sid, rol, z, dh_pub, t_hs, verbose):
         self.sock = sock
@@ -295,6 +312,7 @@ class Sesion:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         except OSError:
             pass
+        _keepalive_rapido(sock)
         print(f"[+] Sesion segura con {peer_id} | SID 0x{sid:08X} | handshake {t_hs * 1000:.1f} ms")
         if verbose:
             print("Mi clave publica DH (256 bytes):\n" + hx(dh_pub))

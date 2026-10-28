@@ -1,0 +1,6 @@
+# Dependencias de phase2_hardware_semifl (servidor y clientes). Versiones con las que se verifico:
+# Python 3.11.9, numpy 2.4.2, matplotlib 3.10.8, cryptography 50.0.2, pytest (solo para tests)
+numpy>=1.24
+matplotlib>=3.7
+cryptography>=41.0
+pytest>=7.4

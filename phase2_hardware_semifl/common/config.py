@@ -20,3 +20,9 @@ MAX_MSG = 65535
 
 # Segundos entre reintentos de conexion del worker
 RECONNECT_S = 4
+
+# TCP keepalive: detecta un par que desaparece sin cerrar (p. ej. tarjeta de red
+# desactivada). Sin esto el SO tarda ~2 h en notarlo. Deteccion ~ IDLE + CNT*INTVL s.
+KEEPALIVE_IDLE_S = int(os.environ.get("SFL_KEEPALIVE_IDLE", "10"))
+KEEPALIVE_INTVL_S = int(os.environ.get("SFL_KEEPALIVE_INTVL", "3"))
+KEEPALIVE_CNT = int(os.environ.get("SFL_KEEPALIVE_CNT", "3"))

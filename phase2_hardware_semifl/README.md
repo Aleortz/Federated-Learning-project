@@ -70,7 +70,7 @@ Cada nodo genera solo la suya; la privada nunca sale de la máquina (`keys/` est
 python -m common.keys --genkey MASTER       # en el servidor
 python -m common.keys --genkey WORKER_1     # en cada cliente: WORKER_1 … WORKER_4
 ```
-Cada comando imprime una línea `--addpub ID=04…`. El **master** ejecuta las 4 líneas de los workers; **cada worker** ejecuta la línea del master. Verifica con `python -m common.keys --list` que las huellas coincidan. Los IDs deben ser exactamente `WORKER_1…WORKER_4` en esta configuración (la partición *i* va al *i*-ésimo ID en orden alfabético).
+Cada comando imprime una línea `--addpub ID=04…`. El **master** ejecuta las 4 líneas de los workers; **cada worker** ejecuta la línea del master. Verifica con `python -m common.keys --list` que las huellas coincidan. Los IDs pueden ser cualquiera (p. ej. `ALEJO`, `WORKER_2`…) mientras estén en el `authorized.txt` del master y cada worker use su propio ID: el master toma los 4 primeros que se registren y la partición *i* va al *i*-ésimo en orden alfabético. Solo la simulación local usa `WORKER_1…4`.
 
 ## 5. Ejecución distribuida real (5 computadoras)
 
@@ -86,7 +86,7 @@ Cada comando imprime una línea `--addpub ID=04…`. El **master** ejecuta las 4
 4. **Orden de arranque**:
    1. Servidor (PC 1): `.\scripts\fl.ps1 server iid` (o `noniid`). Equivale a `python -m master_edge.run_server --scheme iid --run-name iid`.
    2. Clientes 1 a 4 (PC 2–5): `.\scripts\fl.ps1 client WORKER_1 <IP_SERVIDOR>` (equivale a `python -m worker_node.run_worker --id WORKER_1 --master <IP>`). También sirve `SFL_MASTER_HOST`.
-   3. El servidor espera hasta `connect_timeout` (120 s) a que **los 4** se registren (`registered` en `events.csv`/consola), reparte las particiones, espera su confirmación y **arranca solo**: no hay paso manual de “iniciar experimento”. El orden de arranque de los workers no importa: reintentan cada 4 s.
+   3. El servidor espera hasta `connect_timeout` (120 s) a que **los 4** se registren (`registered` en `events.csv`/consola), reparte las particiones, espera su confirmación y **arranca solo**: no hay paso manual de “iniciar experimento”. **Arrancar con menos de 4 workers**: por defecto el servidor exige los 4 (si no, aborta tras `connect_timeout`). Con `--allow-partial-start --connect-timeout 30` arranca con los registrados al vencer ese plazo, siempre que sean ≥ `--min-clients`; los workers que lleguen después reciben una partición libre y entran en la siguiente ronda (`late_join`). Las particiones de los que no llegan quedan sin usar, y con ello el experimento deja de ser comparable con uno de 4 clientes. El orden de arranque de los workers no importa: reintentan cada 4 s.
    4. Al terminar el servidor envía `fin` y los workers salen solos. Resultados en `results/<run-name>/` **del servidor**; los logs de cada worker, en `results/worker_logs/<ID>.log` de su máquina.
 5. **IID y non-IID**: solo cambia `--scheme` (`iid`/`noniid`) y el `--run-name` (resultados separados); el resto de parámetros son los mismos. Después, `python -m scripts.comparar` en el servidor.
 
@@ -155,7 +155,7 @@ Una regresión logística centralizada con los mismos datos alcanza ≈0.845 de 
 
 ## 10. Tests
 
-`python -m pytest -q` → **55 pasados, 1 omitido** (`test_cinco_computadoras_fisicas`, marcado `multimachine`: requiere las 5 PCs). Cubren: particiones (conservación, solapamientos, reproducibilidad, heterogeneidad, error si no se alcanza), FedAvg con valores conocidos, validación de rondas/versiones/duplicados/tardías/no finitos, métricas, entrenamiento local, serialización y errores de comunicación, configuración inválida, 4 clientes de extremo a extremo (IID y non-IID), timeout con actualización tardía, caída/reconexión/sincronización/reincorporación, ronda sin quórum (recuperación y aborto), worker no autorizado. Los de integración usan **sockets reales pero en una sola máquina**.
+`python -m pytest -q` → **57 pasados, 1 omitido** (`test_cinco_computadoras_fisicas`, marcado `multimachine`: requiere las 5 PCs). Cubren: particiones (conservación, solapamientos, reproducibilidad, heterogeneidad, error si no se alcanza), FedAvg con valores conocidos, validación de rondas/versiones/duplicados/tardías/no finitos, métricas, entrenamiento local, serialización y errores de comunicación, configuración inválida, 4 clientes de extremo a extremo (IID y non-IID), timeout con actualización tardía, caída/reconexión/sincronización/reincorporación, ronda sin quórum (recuperación y aborto), worker no autorizado. Los de integración usan **sockets reales pero en una sola máquina**.
 
 ## 11. Solución de problemas
 

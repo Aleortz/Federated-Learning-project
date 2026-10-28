@@ -36,15 +36,17 @@ def claves_temporales(carpeta, ids):
         f.write("\n".join(pubs) + "\n")
 
 
-def simular(cfg, csv=data.ADULT_CSV, simulaciones=None, reconnect_s=0.5, graficos=True, dataset=None):
+def simular(cfg, csv=data.ADULT_CSV, simulaciones=None, reconnect_s=0.5, graficos=True, dataset=None,
+            retrasos=None):
     """
     Ejecuta un experimento completo en local. simulaciones: {worker_id: SimulacionCaida}.
     Devuelve (resumen, directorio_de_resultados).
     """
     simulaciones = simulaciones or {}
+    retrasos = retrasos or {}             # {worker_id: segundos antes de arrancar} (llegadas tardias)
     ids = [f"WORKER_{i + 1}" for i in range(cfg.n_clients)]
     ds = dataset or data.cargar(csv, cfg.val_frac, cfg.test_frac, cfg.seed)
-    workers, hilos, handlers = [], [], []
+    workers, hilos, handlers, timers = [], [], [], []
     with tempfile.TemporaryDirectory() as keydir:
         claves_temporales(keydir, [config.MASTER_ID] + ids)
         port = puerto_libre()
@@ -56,19 +58,27 @@ def simular(cfg, csv=data.ADULT_CSV, simulaciones=None, reconnect_s=0.5, grafico
                 handlers.append((f"worker.{w_id}", h))
                 w = FLWorker(w_id, "127.0.0.1", port, keydir, dataset=ds, reconnect_s=reconnect_s,
                              simulacion=simulaciones.get(w_id))
-                w.start()
                 workers.append(w)
                 t = threading.Thread(target=w.run, daemon=True, name=w_id)
-                t.start()
                 hilos.append(t)
+                if retrasos.get(w_id):
+                    tm = threading.Timer(retrasos[w_id], lambda w=w, t=t: (w.start(), t.start()))
+                    timers.append(tm)
+                    tm.start()
+                else:
+                    w.start()
+                    t.start()
 
         try:
             return ejecutar_master(cfg, keydir, port, csv, tras_arrancar=lanzar, graficos=graficos)
         finally:
+            for tm in timers:
+                tm.cancel()
             for w in workers:
                 w.stop()
             for t in hilos:
-                t.join(timeout=3)
+                if t.ident is not None:
+                    t.join(timeout=3)
             for nombre, h in handlers:
                 h.close()
                 logging.getLogger(nombre).removeHandler(h)

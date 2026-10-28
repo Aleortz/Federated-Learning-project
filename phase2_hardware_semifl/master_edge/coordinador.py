@@ -96,6 +96,7 @@ class Coordinador:
         self.desconectado_desde = {}  # worker -> instante en que se perdio
         self.fallos_seguidos = {}    # worker -> (ronda inicial perdida, instante)
         self.fase = "arranque"
+        self.repartido = False
         self.t0 = time.time()
         self.abortado = None
         os.makedirs(os.path.join(out_dir, "checkpoints"), exist_ok=True)
@@ -187,6 +188,14 @@ class Coordinador:
         self.evento("reconnected" if reconexion else "registered", w,
                     (f"tras {down:.1f} s sin sesion; " if reconexion else "")
                     + f"has_partition={msg.get('has_partition')} rounds_done={msg.get('rounds_done')}")
+        if w not in self.posicion and self.repartido:    # llegada tardia: toma una particion libre
+            libres = [i for i in range(self.cfg.n_clients) if i not in self.posicion.values()]
+            if libres:
+                self.posicion[w] = libres[0]
+                self.evento("late_join", w, f"se le asigna la particion {libres[0]}")
+                msg = {**msg, "has_partition": False}
+            else:
+                self.evento("register_rejected", w, "no quedan particiones libres")
         if w in self.posicion:                       # ya hay reparto hecho
             if msg.get("has_partition"):
                 self.listos.add(w)
@@ -220,6 +229,10 @@ class Coordinador:
                 self._procesar_fuera(self.q.get(timeout=0.5))
             except queue.Empty:
                 pass
+        if len(self.vistos) < self.cfg.n_clients and self.cfg.allow_partial_start                 and len(self.vistos) >= self.cfg.min_clients:
+            self.evento("partial_start", detail=f"arranca con {len(self.vistos)} de {self.cfg.n_clients} "
+                        f"workers {sorted(self.vistos)}; los demas podran incorporarse en rondas posteriores")
+            return
         if len(self.vistos) < self.cfg.n_clients:
             raise TimeoutError(f"solo {len(self.vistos)} de {self.cfg.n_clients} workers se registraron "
                                f"en {self.cfg.connect_timeout:.0f} s: {sorted(self.vistos)}")
@@ -238,6 +251,7 @@ class Coordinador:
                 pass
         if len(self.listos) < len(ids):
             raise TimeoutError(f"particion sin confirmar por {sorted(set(ids) - self.listos)}")
+        self.repartido = True
 
     # ================= evaluacion y checkpoints =================
     def evaluar(self):

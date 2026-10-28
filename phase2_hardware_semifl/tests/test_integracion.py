@@ -126,6 +126,21 @@ def test_sin_quorum_persistente_aborta_de_forma_controlada(tmp_path):
     assert resumen["rounds_completed"] < 4 and time.time() - t0 < 30           # no se queda esperando
 
 
+def test_arranque_parcial_y_llegada_tardia(tmp_path):
+    cfg = _cfg(tmp_path, rounds=8, round_delay=0.6, connect_timeout=2, allow_partial_start=True)
+    resumen, out = simular(cfg, retrasos={"WORKER_4": 4.0})
+    ev = _eventos(out)
+    assert "partial_start" in ev and "late_join" in ev
+    g = _csv(out, "global_metrics.csv")
+    assert g[0]["expected"] == 3 and g[-1]["expected"] == 4 and resumen["rounds_completed"] == 8
+
+
+def test_sin_arranque_parcial_el_servidor_exige_a_todos(tmp_path):
+    cfg = _cfg(tmp_path, connect_timeout=2)
+    with pytest.raises(TimeoutError, match="3 de 4"):
+        simular(cfg, retrasos={"WORKER_4": 30.0})
+
+
 def test_worker_no_autorizado_es_rechazado():
     with tempfile.TemporaryDirectory() as kd_master, tempfile.TemporaryDirectory() as kd_intruso:
         claves_temporales(kd_master, ["MASTER", "WORKER_1"])

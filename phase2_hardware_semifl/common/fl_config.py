@@ -7,6 +7,7 @@ Prioridad de valores (de menor a mayor): defaults de este archivo < archivo JSON
 La configuracion de red/seguridad (IP, puerto, carpeta de claves) vive en
 common/config.py y no se duplica aqui.
 """
+import argparse
 import dataclasses
 import json
 import os
@@ -21,6 +22,7 @@ class FLConfig:
     n_clients: int = 4                 # workers esperados
     rounds: int = 10                   # rondas federadas (no confundir con epocas locales)
     min_clients: int = 2               # actualizaciones validas minimas para agregar una ronda
+    allow_partial_start: bool = False  # True: si vence connect_timeout y hay >= min_clients registrados, arranca con ellos
     # ---- entrenamiento local ----
     local_epochs: int = 1
     batch_size: int = 64
@@ -124,8 +126,13 @@ def agregar_argumentos(ap):
     ap.add_argument("--config", help="archivo JSON con parametros del experimento")
     for f in dataclasses.fields(FLConfig):
         tipo = type(getattr(FLConfig(), f.name))
-        ap.add_argument("--" + f.name.replace("_", "-"), dest=f.name, type=tipo, default=None,
-                        help=f"(defecto {getattr(FLConfig(), f.name)!r})")
+        flag = "--" + f.name.replace("_", "-")
+        if tipo is bool:
+            ap.add_argument(flag, dest=f.name, action=argparse.BooleanOptionalAction, default=None,
+                            help=f"(defecto {getattr(FLConfig(), f.name)!r}; --no-... para desactivar)")
+        else:
+            ap.add_argument(flag, dest=f.name, type=tipo, default=None,
+                            help=f"(defecto {getattr(FLConfig(), f.name)!r})")
     return ap
 
 
